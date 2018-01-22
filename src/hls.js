@@ -12,21 +12,29 @@ import StreamController from  './controller/stream-controller';
 import LevelController from  './controller/level-controller';
 import ID3TrackController from './controller/id3-track-controller';
 
-import {isSupported} from './helper/is-supported';
+import {getMediaSource} from './helper/mediasource-helper';
 import {logger, enableLogs} from './utils/logger';
 import EventEmitter from 'events';
 import {hlsDefaultConfig} from './config';
-
-// polyfill for IE11
-require('string.prototype.endswith');
 
 export default class Hls {
   static get version() {
     return __VERSION__;
   }
-
   static isSupported() {
-    return isSupported();
+    const mediaSource = getMediaSource();
+    const sourceBuffer = window.SourceBuffer || window.WebKitSourceBuffer;
+    // 需要监测 mediaSource 的 Api 在浏览器下可用 并且需要确保支持这种视频源的格式
+    const isTypeSupported = mediaSource &&
+                            typeof mediaSource.isTypeSupported === 'function' &&
+                            mediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E,mp4a.40.2"');
+
+    // 确保 appendBuffer 和  remove 方法的支持
+    const sourceBufferValidAPI = !sourceBuffer ||
+                                 (sourceBuffer.prototype &&
+                                 typeof sourceBuffer.prototype.appendBuffer === 'function' &&
+                                 typeof sourceBuffer.prototype.remove === 'function');
+    return isTypeSupported && sourceBufferValidAPI;
   }
 
   static get Events() {
@@ -54,11 +62,10 @@ export default class Hls {
 
   constructor(config = {}) {
     var defaultConfig = Hls.DefaultConfig;
-
+    // 关于直播流的配置，我们这里可以先忽略，这一段大家都能够理解，就是配置的 merge
     if ((config.liveSyncDurationCount || config.liveMaxLatencyDurationCount) && (config.liveSyncDuration || config.liveMaxLatencyDuration)) {
       throw new Error('Illegal hls.js config: don\'t mix up liveSyncDurationCount/liveMaxLatencyDurationCount and liveSyncDuration/liveMaxLatencyDuration');
     }
-
     for (var prop in defaultConfig) {
         if (prop in config) { continue; }
         config[prop] = defaultConfig[prop];
@@ -74,8 +81,9 @@ export default class Hls {
 
     enableLogs(config.debug);
     this.config = config;
+    console.log('hlsCore: ', this.config.version);
     this._autoLevelCapping = -1;
-    // observer setup
+    // 建立内部事件通信机制
     var observer = this.observer = new EventEmitter();
     observer.trigger = function trigger (event, ...data) {
       observer.emit(event, event, ...data);
@@ -88,7 +96,7 @@ export default class Hls {
     this.off = observer.off.bind(observer);
     this.trigger = observer.trigger.bind(observer);
 
-    // core controllers and network loaders
+    // 初始化 各种 controller
     const abrController = this.abrController = new config.abrController(this);
     const bufferController  = new config.bufferController(this);
     const capLevelController = new config.capLevelController(this);
@@ -103,14 +111,14 @@ export default class Hls {
     const streamController = this.streamController = new StreamController(this);
     let networkControllers = [levelController, streamController];
 
-    // optional audio stream controller
+    // 需要通过配置加入的一些 controller
     let Controller = config.audioStreamController;
     if (Controller) {
       networkControllers.push(new Controller(this));
     }
     this.networkControllers = networkControllers;
 
-    let coreComponents = [ playListLoader, fragmentLoader, keyLoader, abrController, bufferController, capLevelController, fpsController, id3TrackController ];
+    let coreComponents = [ playListLoader, fragmentLoader, keyLoader, abrController, bufferController, capLevelController, fpsController , id3TrackController];
 
     // optional audio track and subtitle controller
     Controller = config.audioTrackController;
@@ -127,14 +135,7 @@ export default class Hls {
       coreComponents.push(subtitleTrackController);
     }
 
-    Controller = config.emeController;
-    if (Controller) {
-      let emeController = new Controller(this);
-      this.emeController = emeController;
-      coreComponents.push(emeController);
-    }
-
-    // optional subtitle controller
+    // 可选的外挂字幕
     [config.subtitleStreamController, config.timelineController].forEach(Controller => {
       if (Controller) {
         coreComponents.push(new Controller(this));
@@ -152,7 +153,7 @@ export default class Hls {
     this.observer.removeAllListeners();
     this._autoLevelCapping = -1;
   }
-
+  // 绑定媒体元素
   attachMedia(media) {
     logger.log('attachMedia');
     this.media = media;
@@ -164,7 +165,7 @@ export default class Hls {
     this.trigger(Event.MEDIA_DETACHING);
     this.media = null;
   }
-
+  // 触发加载 m3u8文件
   loadSource(url) {
     url = URLToolkit.buildAbsoluteURL(window.location.href, url, { alwaysNormalize: true });
     logger.log(`loadSource:${url}`);
@@ -187,7 +188,7 @@ export default class Hls {
     logger.log('swapAudioCodec');
     this.streamController.swapAudioCodec();
   }
-
+  // 恢复media error
   recoverMediaError() {
     logger.log('recoverMediaError');
     var media = this.media;
@@ -195,17 +196,16 @@ export default class Hls {
     this.attachMedia(media);
   }
 
-  /** Return all quality levels **/
+  // 返回当前源的播放质量
   get levels() {
     return this.levelController.levels;
   }
 
-  /** Return current playback quality level **/
   get currentLevel() {
     return this.streamController.currentLevel;
   }
 
-  /* set quality level immediately (-1 for automatic level selection) */
+  // 设置媒体清晰度
   set currentLevel(newLevel) {
     logger.log(`set currentLevel:${newLevel}`);
     this.loadLevel = newLevel;
@@ -342,7 +342,7 @@ export default class Hls {
     hls.abrController.nextAutoLevel = Math.max(hls.minAutoLevel,nextLevel);
   }
 
-  /** get alternate audio tracks list from playlist **/
+  // 从播放列表里获取附加的音频
   get audioTracks() {
     const audioTrackController = this.audioTrackController;
     return audioTrackController ? audioTrackController.audioTracks : [];

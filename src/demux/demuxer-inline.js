@@ -4,11 +4,11 @@
 
 import Event from '../events';
 import { ErrorTypes, ErrorDetails } from '../errors';
-import Decrypter from '../crypt/decrypter';
-import AACDemuxer from '../demux/aacdemuxer';
+// import Decrypter from '../crypt/decrypter';
+// import AACDemuxer from '../demux/aacdemuxer';
 import MP4Demuxer from '../demux/mp4demuxer';
 import TSDemuxer from '../demux/tsdemuxer';
-import MP3Demuxer from '../demux/mp3demuxer';
+// import MP3Demuxer from '../demux/mp3demuxer';
 import MP4Remuxer from '../remux/mp4-remuxer';
 import PassThroughRemuxer from '../remux/passthrough-remuxer';
 
@@ -29,6 +29,8 @@ class DemuxerInline {
   }
 
   push(data, decryptdata, initSegment, audioCodec, videoCodec, timeOffset, discontinuity, trackSwitch, contiguous, duration, accurateTimeOffset, defaultInitPTS) {
+    this.pushDecrypted(new Uint8Array(data), decryptdata, new Uint8Array(initSegment), audioCodec, videoCodec, timeOffset, discontinuity, trackSwitch, contiguous, duration, accurateTimeOffset, defaultInitPTS);
+    return;
     if ((data.byteLength > 0) && (decryptdata != null) && (decryptdata.key != null) && (decryptdata.method === 'AES-128')) {
       let decrypter = this.decrypter;
       if (decrypter == null) {
@@ -53,7 +55,7 @@ class DemuxerInline {
         localthis.pushDecrypted(new Uint8Array(decryptedData), decryptdata, new Uint8Array(initSegment), audioCodec, videoCodec, timeOffset, discontinuity, trackSwitch, contiguous, duration, accurateTimeOffset, defaultInitPTS);
       });
     } else {
-      this.pushDecrypted(new Uint8Array(data), decryptdata, new Uint8Array(initSegment), audioCodec, videoCodec, timeOffset, discontinuity, trackSwitch, contiguous, duration, accurateTimeOffset, defaultInitPTS);
+
     }
   }
 
@@ -69,12 +71,12 @@ class DemuxerInline {
       // probing order is TS/AAC/MP3/MP4
       const muxConfig = [
         { demux: TSDemuxer, remux: MP4Remuxer },
-        { demux: MP4Demuxer, remux: PassThroughRemuxer },
-        { demux: AACDemuxer, remux: MP4Remuxer },
-        { demux: MP3Demuxer, remux: MP4Remuxer }
+        // { demux: AACDemuxer, remux: MP4Remuxer },
+      //  { demux: MP3Demuxer, remux: MP4Remuxer },
+        { demux: MP4Demuxer, remux: PassThroughRemuxer }
       ];
 
-      // probe for content type
+      // 需要确定具体的 提出器 和 分流器
       for (let i = 0, len = muxConfig.length; i < len; i++) {
         const mux = muxConfig[i];
         const probe = mux.demux.probe;
@@ -92,7 +94,6 @@ class DemuxerInline {
       this.demuxer = demuxer;
     }
     const remuxer = this.remuxer;
-
     if (discontinuity || trackSwitch) {
       demuxer.resetInitSegment(initSegment, audioCodec, videoCodec, duration);
       remuxer.resetInitSegment();

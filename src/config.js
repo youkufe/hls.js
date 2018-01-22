@@ -9,18 +9,16 @@ import FPSController from './controller/fps-controller';
 import XhrLoader from './utils/xhr-loader';
 //import FetchLoader from './utils/fetch-loader';
 
-import AudioTrackController from './controller/audio-track-controller';
+/*import AudioTrackController from './controller/audio-track-controller';
 import AudioStreamController from  './controller/audio-stream-controller';
 
 import * as Cues from './utils/cues';
 import TimelineController from './controller/timeline-controller';
 import SubtitleTrackController from './controller/subtitle-track-controller';
 import SubtitleStreamController from  './controller/subtitle-stream-controller';
-import EMEController from './controller/eme-controller';
-
-import {requestMediaKeySystemAccess} from './helper/mediakeys-helper';
-
+*/
 export var hlsDefaultConfig = {
+  version: '0.1.7',
   autoStartLoad: true,                    // used by stream-controller
   startPosition: -1,                      // used by stream-controller
   defaultAudioCodec: undefined,           // used by stream-controller
@@ -41,7 +39,6 @@ export var hlsDefaultConfig = {
   liveMaxLatencyDurationCount: Infinity,  // used by stream-controller
   liveSyncDuration: undefined,            // used by stream-controller
   liveMaxLatencyDuration: undefined,      // used by stream-controller
-  liveDurationInfinity: false,            // used by buffer-controller
   maxMaxBufferLength: 600,                // used by stream-controller
   enableWorker: true,                     // used by demuxer
   enableSoftwareAES: true,                // used by decrypter
@@ -68,7 +65,6 @@ export var hlsDefaultConfig = {
   fLoader: undefined,
   pLoader: undefined,
   xhrSetup: undefined,
-  licenseXhrSetup: undefined,              // used by eme-controller
   fetchSetup: undefined,
   abrController: AbrController,
   bufferController: BufferController,
@@ -87,14 +83,10 @@ export var hlsDefaultConfig = {
   abrMaxWithRealBitrate : false,            // used by abr-controller
   maxStarvationDelay : 4,                   // used by abr-controller
   maxLoadingDelay : 4,                      // used by abr-controller
-  minAutoBitrate: 0,                        // used by hls
-  emeEnabled: false,                        // used by eme-controller
-  widevineLicenseUrl: undefined,            // used by eme-controller
-  requestMediaKeySystemAccessFunc:
-            requestMediaKeySystemAccess,    // used by eme-controller
+  minAutoBitrate: 0                         // used by hls
 };
-
-if (__USE_SUBTITLES__) {
+/*
+if (typeof __SUBTITLE__ !== 'undefined' && __SUBTITLE__) {
   hlsDefaultConfig.subtitleStreamController = SubtitleStreamController;
   hlsDefaultConfig.subtitleTrackController = SubtitleTrackController;
   hlsDefaultConfig.timelineController = TimelineController;
@@ -107,11 +99,7 @@ if (__USE_SUBTITLES__) {
   hlsDefaultConfig.captionsTextTrack2LanguageCode = 'es'; // used by timeline-controller
 }
 
-if (__USE_ALT_AUDIO__) {
+if (typeof __ALT_AUDIO__ !== 'undefined' && __ALT_AUDIO__) {
   hlsDefaultConfig.audioStreamController = AudioStreamController;
   hlsDefaultConfig.audioTrackController = AudioTrackController;
-}
-
-if (__USE_EME_DRM__) {
-  hlsDefaultConfig.emeController = EMEController;
-}
+}*/

@@ -6,12 +6,12 @@ import BinarySearch from '../utils/binary-search';
 import BufferHelper from '../helper/buffer-helper';
 import Demuxer from '../demux/demuxer';
 import Event from '../events';
-import * as LevelHelper from '../helper/level-helper';
-import TimeRanges from '../utils/timeRanges';
+import EventHandler from '../event-handler';
+import * as LevelHelper from '../helper/level-helper';import TimeRanges from '../utils/timeRanges';
 import {ErrorTypes, ErrorDetails} from '../errors';
 import {logger} from '../utils/logger';
 import { alignDiscontinuities } from '../utils/discontinuities';
-import TaskLoop from '../task-loop';
+
 
 const State = {
   STOPPED : 'STOPPED',
@@ -27,7 +27,9 @@ const State = {
   ERROR : 'ERROR'
 };
 
-class StreamController extends TaskLoop {
+let lastCurrentTime = 0;
+
+class StreamController extends EventHandler {
 
   constructor(hls) {
     super(hls,
@@ -51,14 +53,18 @@ class StreamController extends TaskLoop {
 
     this.config = hls.config;
     this.audioCodecSwap = false;
+    this.ticks = 0;
     this._state = State.STOPPED;
+    this.ontick = this.tick.bind(this);
   }
 
-  onHandlerDestroying() {
+  destroy() {
     this.stopLoad();
-  }
-
-  onHandlerDestroyed() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    EventHandler.prototype.destroy.call(this);
     this.state = State.STOPPED;
   }
 
@@ -66,7 +72,9 @@ class StreamController extends TaskLoop {
     if (this.levels) {
       let lastCurrentTime = this.lastCurrentTime, hls = this.hls;
       this.stopLoad();
-      this.setInterval(100);
+      if (!this.timer) {
+        this.timer = setInterval(this.ontick, 100);
+      }
       this.level = -1;
       this.fragLoadError = 0;
       if (!this.startFragRequested) {
@@ -113,8 +121,18 @@ class StreamController extends TaskLoop {
     this.forceStartLoad = false;
   }
 
-  doTick() {
+  tick() {
+    this.ticks++;
+    if (this.ticks === 1) {
+      this.doTick();
+      if (this.ticks > 1) {
+        setTimeout(this.tick, 1);
+      }
+      this.ticks = 0;
+    }
+  }
 
+  doTick() {
     switch(this.state) {
       case State.ERROR:
         //don't do anything in error state to avoid breaking further ...
@@ -165,6 +183,7 @@ class StreamController extends TaskLoop {
     const hls = this.hls,
           config = hls.config,
           media = this.media;
+
 
     // if start level not parsed yet OR
     // if video not attached AND start fragment already requested OR start frag prefetch disable
@@ -220,7 +239,7 @@ class StreamController extends TaskLoop {
     // if level info not retrieved yet, switch state and wait for level retrieval
     // if live playlist, ensure that new playlist has been refreshed to avoid loading/try to load
     // a useless and outdated fragment (that might even introduce load error if it is already out of the live playlist)
-    if (levelDetails === undefined || levelDetails.live === true && this.levelLastLoaded !== level) {
+    if (typeof levelDetails === 'undefined' || levelDetails.live && this.levelLastLoaded !== level) {
       this.state = State.WAITING_LEVEL;
       return;
     }
@@ -592,6 +611,13 @@ class StreamController extends TaskLoop {
         media decode error, check this, to avoid seeking back to
         wrong position after a media decode error
       */
+
+      if (currentTime !== lastCurrentTime) {
+          this.hls.trigger(Event.FRAME_UPDATED, {frag: fragPlaying, video});
+      }
+      if (currentTime) {
+          lastCurrentTime = currentTime;
+      }
       if(currentTime > video.playbackRate*this.lastCurrentTime) {
         this.lastCurrentTime = currentTime;
       }
@@ -605,6 +631,8 @@ class StreamController extends TaskLoop {
           for FRAG_CHANGED event reporting */
         fragPlayingCurrent = this.getBufferedFrag(currentTime + 0.1);
       }
+
+
       if (fragPlayingCurrent) {
         var fragPlaying = fragPlayingCurrent;
         if (fragPlaying !== this.fragPlaying) {
@@ -1025,11 +1053,10 @@ class StreamController extends TaskLoop {
     }
     this.fragLoadError = 0;
   }
-
+  // 解析第一个分片的数据
   onFragParsingInitSegment(data) {
     const fragCurrent = this.fragCurrent;
     const fragNew = data.frag;
-
     if (fragCurrent &&
         data.id === 'main' &&
         fragNew.sn === fragCurrent.sn &&
@@ -1037,14 +1064,13 @@ class StreamController extends TaskLoop {
         this.state === State.PARSING) {
       var tracks = data.tracks, trackName, track;
 
-      // if audio track is expected to come from audio stream controller, discard any coming from main
+      // 如果有别的 audio stream 会删掉默认的音轨
       if (tracks.audio && this.altAudio) {
         delete tracks.audio;
       }
-      // include levelCodec in audio and video tracks
+      // 我们需要学会设置音轨的 codec
       track = tracks.audio;
       if(track) {
-
         var audioCodec = this.levels[this.level].audioCodec,
             ua = navigator.userAgent.toLowerCase();
         if(audioCodec && this.audioCodecSwap) {
@@ -1561,4 +1587,3 @@ _checkBuffer() {
   }
 }
 export default StreamController;
-

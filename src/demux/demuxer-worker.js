@@ -74,4 +74,3 @@ var DemuxerWorker = function (self) {
 };
 
 export default DemuxerWorker;
-
